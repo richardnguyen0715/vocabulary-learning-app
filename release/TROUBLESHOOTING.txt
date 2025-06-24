@@ -1,0 +1,20 @@
+KHAC PHUC SU CO 
+=============== 
+ 
+1. UNG DUNG KHONG MO DUOC: 
+   - Kiem tra Windows Defender/Antivirus 
+   - Click phai vao file .exe > Properties > Unblock 
+   - Chay bang quyen Administrator 
+ 
+2. KHONG KET NOI DUOC DATABASE: 
+   - Kiem tra MongoDB service: 
+     net start MongoDB 
+   - Neu loi, cai lai MongoDB 
+ 
+3. KHONG TRA CUU DUOC TU DIEN: 
+   - Kiem tra ket noi Internet 
+   - Su dung che do "Quick Add" thay the 
+ 
+4. UNG DUNG CHAY CHAM: 
+   - Bo tick "Auto lookup English meaning" 
+   - Su dung nut "Quick Add (No Lookup)" 
