@@ -1,0 +1,22 @@
+[project]
+name = "vocab-container"
+version = "0.1.0"
+description = "tuong.nguyen-vocab-english"
+authors = [
+    {name = "tuong.nguyen",email = "richardnguyen0715@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "flask (>=3.1.1,<4.0.0)",
+    "pymongo (>=4.13.2,<5.0.0)",
+    "python-dotenv (>=1.1.1,<2.0.0)",
+    "pytest (>=8.4.1,<9.0.0)",
+    "mongoengine (>=0.29.1,<0.30.0)",
+    "requests (>=2.32.4,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
