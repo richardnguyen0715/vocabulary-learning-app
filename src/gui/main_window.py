@@ -5,22 +5,31 @@ from src.services.dictionary_service import DictionaryService
 from src.gui.flashcard_window import FlashcardWindow
 from src.gui.quiz_window import QuizWindow
 from src.gui.progress_window import ProgressWindow
+from src.gui.vocabulary_management_window import VocabularyManagementWindow
+from src.gui.edit_word_window import EditWordWindow
 import config
 import threading
+from datetime import datetime
 
 class MainWindow:
     def __init__(self, master, db_connection=None):
         self.master = master
         self.db_connection = db_connection
-        self.db = db_connection.db if db_connection else None
-        self.vocab_model = VocabularyModel(self.db) if self.db else None
-        self.progress_model = ProgressModel(self.db) if self.db else None
+        self.db = db_connection.db if db_connection is not None else None
+        self.vocab_model = VocabularyModel(self.db) if self.db is not None else None
+        self.progress_model = ProgressModel(self.db) if self.db is not None else None
         self.dictionary_service = DictionaryService()
+        self.recent_words = []
         
         self.master.title(config.APP_TITLE)
-        self.master.geometry("800x600")
+        self.master.geometry("1000x700")
         self.master.resizable(True, True)
 
+        # Configure default font
+        self.default_font = ("Times New Roman", 12)
+        self.title_font = ("Times New Roman", 20, "bold")
+        self.label_font = ("Times New Roman", 12)
+        
         self.create_menu()
         self.create_widgets()
         self.load_recent_words()
@@ -41,50 +50,64 @@ class MainWindow:
         features_menu.add_command(label="Flashcards", command=self.open_flashcard_window)
         features_menu.add_command(label="Quiz", command=self.open_quiz_window)
         features_menu.add_command(label="Progress", command=self.open_progress_window)
+        features_menu.add_command(label="Manage Vocabulary", command=self.manage_vocabulary)
 
     def create_widgets(self):
         # Main container
         main_container = ttk.Frame(self.master)
-        main_container.pack(fill='both', expand=True, padx=10, pady=10)
+        main_container.pack(fill='both', expand=True, padx=15, pady=15)
 
         # Title
         title_frame = ttk.Frame(main_container)
-        title_frame.pack(fill='x', pady=(0, 20))
+        title_frame.pack(fill='x', pady=(0, 25))
         
         title_label = ttk.Label(title_frame, text="Vocabulary Learning App", 
-                               font=("Arial", 20, "bold"))
+                               font=self.title_font)
         title_label.pack()
 
         # Input section
-        input_frame = ttk.LabelFrame(main_container, text="Add New Word", padding="10")
-        input_frame.pack(fill='x', pady=(0, 20))
+        input_frame = ttk.LabelFrame(main_container, text="Add New Word", padding="15")
+        input_frame.pack(fill='x', pady=(0, 25))
 
         # Word input
-        ttk.Label(input_frame, text="English Word:").grid(row=0, column=0, sticky='w', pady=5)
-        self.word_entry = ttk.Entry(input_frame, width=30, font=("Arial", 12))
-        self.word_entry.grid(row=0, column=1, sticky='ew', padx=(10, 0), pady=5)
+        ttk.Label(input_frame, text="English Word:", font=self.label_font).grid(row=0, column=0, sticky='w', pady=8)
+        self.word_entry = ttk.Entry(input_frame, width=30, font=self.default_font)
+        self.word_entry.grid(row=0, column=1, sticky='ew', padx=(15, 0), pady=8)
         self.word_entry.bind('<Return>', self.add_word_enter)
 
         # Part of speech
-        ttk.Label(input_frame, text="Part of Speech:").grid(row=1, column=0, sticky='w', pady=5)
+        ttk.Label(input_frame, text="Part of Speech:", font=self.label_font).grid(row=1, column=0, sticky='w', pady=8)
         self.pos_var = tk.StringVar()
         self.pos_combo = ttk.Combobox(input_frame, textvariable=self.pos_var, 
-                                     values=config.PARTS_OF_SPEECH, width=27)
-        self.pos_combo.grid(row=1, column=1, sticky='ew', padx=(10, 0), pady=5)
+                                     values=config.PARTS_OF_SPEECH, width=28, font=self.default_font)
+        self.pos_combo.grid(row=1, column=1, sticky='ew', padx=(15, 0), pady=8)
 
         # Vietnamese meaning
-        ttk.Label(input_frame, text="Vietnamese Meaning:").grid(row=2, column=0, sticky='w', pady=5)
-        self.vn_meaning_entry = ttk.Entry(input_frame, width=30, font=("Arial", 12))
-        self.vn_meaning_entry.grid(row=2, column=1, sticky='ew', padx=(10, 0), pady=5)
+        ttk.Label(input_frame, text="Vietnamese Meaning:", font=self.label_font).grid(row=2, column=0, sticky='w', pady=8)
+        self.vn_meaning_entry = ttk.Entry(input_frame, width=30, font=self.default_font)
+        self.vn_meaning_entry.grid(row=2, column=1, sticky='ew', padx=(15, 0), pady=8)
         self.vn_meaning_entry.bind('<Return>', self.add_word_enter)
 
-        # Add button
-        self.add_btn = ttk.Button(input_frame, text="Add Word", command=self.add_word)
-        self.add_btn.grid(row=3, column=1, sticky='e', pady=10)
+        # Checkbox for auto lookup
+        self.auto_lookup_var = tk.BooleanVar(value=True)
+        self.auto_lookup_cb = ttk.Checkbutton(input_frame, text="Auto lookup English meaning", 
+                                             variable=self.auto_lookup_var)
+        self.auto_lookup_cb.grid(row=3, column=1, sticky='w', pady=8)
+
+        # Buttons frame
+        btn_frame = ttk.Frame(input_frame)
+        btn_frame.grid(row=4, column=1, sticky='ew', pady=15)
+
+        self.add_btn = ttk.Button(btn_frame, text="Add Word", command=self.add_word)
+        self.add_btn.pack(side='left')
+
+        self.quick_add_btn = ttk.Button(btn_frame, text="Quick Add (No Lookup)", 
+                                       command=self.quick_add_word)
+        self.quick_add_btn.pack(side='left', padx=(15, 0))
 
         # Status label
-        self.status_label = ttk.Label(input_frame, text="", foreground="green")
-        self.status_label.grid(row=4, column=0, columnspan=2, pady=5)
+        self.status_label = ttk.Label(input_frame, text="", foreground="green", font=self.default_font)
+        self.status_label.grid(row=5, column=0, columnspan=2, pady=8)
 
         input_frame.columnconfigure(1, weight=1)
 
@@ -92,55 +115,204 @@ class MainWindow:
         content_frame = ttk.Frame(main_container)
         content_frame.pack(fill='both', expand=True)
 
-        # Left panel - Recent words
-        left_panel = ttk.LabelFrame(content_frame, text="Recent Words (10)", padding="10")
-        left_panel.pack(side='left', fill='both', expand=True, padx=(0, 10))
+        # Left panel - Recent words with table
+        left_panel = ttk.LabelFrame(content_frame, text="Recent Words", padding="15")
+        left_panel.pack(side='left', fill='both', expand=True, padx=(0, 15))
 
-        # Recent words listbox
-        listbox_frame = ttk.Frame(left_panel)
-        listbox_frame.pack(fill='both', expand=True)
-
-        self.recent_listbox = tk.Listbox(listbox_frame, font=("Arial", 10))
-        scrollbar = ttk.Scrollbar(listbox_frame, orient="vertical", command=self.recent_listbox.yview)
-        self.recent_listbox.configure(yscrollcommand=scrollbar.set)
-
-        self.recent_listbox.pack(side='left', fill='both', expand=True)
-        scrollbar.pack(side='right', fill='y')
-
-        # Buttons for recent words
-        recent_btn_frame = ttk.Frame(left_panel)
-        recent_btn_frame.pack(fill='x', pady=(10, 0))
-
-        ttk.Button(recent_btn_frame, text="Edit", command=self.edit_selected_word).pack(side='left', padx=(0, 5))
-        ttk.Button(recent_btn_frame, text="Delete", command=self.delete_selected_word).pack(side='left')
+        # Recent words table
+        self.create_recent_words_table(left_panel)
 
         # Right panel - Search and Features
         right_panel = ttk.Frame(content_frame)
         right_panel.pack(side='right', fill='y')
 
         # Search section
-        search_frame = ttk.LabelFrame(right_panel, text="Search", padding="10")
-        search_frame.pack(fill='x', pady=(0, 10))
+        search_frame = ttk.LabelFrame(right_panel, text="Search", padding="15")
+        search_frame.pack(fill='x', pady=(0, 15))
 
-        self.search_entry = ttk.Entry(search_frame, width=25)
-        self.search_entry.pack(fill='x', pady=(0, 5))
+        ttk.Label(search_frame, text="Search words:", font=self.label_font).pack(anchor='w')
+        self.search_entry = ttk.Entry(search_frame, width=25, font=self.default_font)
+        self.search_entry.pack(fill='x', pady=(5, 10))
         self.search_entry.bind('<KeyRelease>', self.search_words)
 
-        ttk.Button(search_frame, text="Clear", command=self.clear_search).pack()
+        ttk.Button(search_frame, text="Clear Search", command=self.clear_search).pack()
 
         # Features section
-        features_frame = ttk.LabelFrame(right_panel, text="Features", padding="10")
+        features_frame = ttk.LabelFrame(right_panel, text="Features", padding="15")
         features_frame.pack(fill='x')
 
         ttk.Button(features_frame, text="Start Flashcards", 
-                  command=self.open_flashcard_window, width=20).pack(pady=2)
+                  command=self.open_flashcard_window, width=22).pack(pady=5)
         ttk.Button(features_frame, text="Take Quiz", 
-                  command=self.open_quiz_window, width=20).pack(pady=2)
+                  command=self.open_quiz_window, width=22).pack(pady=5)
         ttk.Button(features_frame, text="View Progress", 
-                  command=self.open_progress_window, width=20).pack(pady=2)
+                  command=self.open_progress_window, width=22).pack(pady=5)
         ttk.Button(features_frame, text="Manage All Words", 
-                  command=self.manage_vocabulary, width=20).pack(pady=2)
+                  command=self.manage_vocabulary, width=22).pack(pady=5)
 
+    def create_recent_words_table(self, parent):
+        """Create a table for recent words"""
+        # Table frame
+        table_frame = ttk.Frame(parent)
+        table_frame.pack(fill='both', expand=True)
+
+        # Treeview for recent words
+        columns = ('Word', 'Vietnamese', 'Part of Speech', 'Date')
+        self.recent_tree = ttk.Treeview(table_frame, columns=columns, show='headings', height=12)
+        
+        # Define headings
+        self.recent_tree.heading('Word', text='English Word')
+        self.recent_tree.heading('Vietnamese', text='Vietnamese Meaning')
+        self.recent_tree.heading('Part of Speech', text='Part of Speech')
+        self.recent_tree.heading('Date', text='Added Date')
+        
+        # Column widths
+        self.recent_tree.column('Word', width=120)
+        self.recent_tree.column('Vietnamese', width=180)
+        self.recent_tree.column('Part of Speech', width=100)
+        self.recent_tree.column('Date', width=100)
+
+        # Configure treeview style
+        style = ttk.Style()
+        style.configure("Treeview", font=("Times New Roman", 11))
+        style.configure("Treeview.Heading", font=("Times New Roman", 12, "bold"))
+
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.recent_tree.yview)
+        self.recent_tree.configure(yscrollcommand=scrollbar.set)
+
+        # Pack components
+        self.recent_tree.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+        # Buttons for table actions
+        table_btn_frame = ttk.Frame(parent)
+        table_btn_frame.pack(fill='x', pady=(15, 0))
+
+        ttk.Button(table_btn_frame, text="Edit Selected", 
+                  command=self.edit_selected_word).pack(side='left', padx=(0, 10))
+        ttk.Button(table_btn_frame, text="Delete Selected", 
+                  command=self.delete_selected_word).pack(side='left')
+
+        # Double-click to edit
+        self.recent_tree.bind('<Double-1>', self.on_tree_double_click)
+
+    def load_recent_words(self):
+        """Load recent words into the table"""
+        if not self.vocab_model:
+            return
+            
+        # Clear existing items
+        for item in self.recent_tree.get_children():
+            self.recent_tree.delete(item)
+            
+        try:
+            self.recent_words = self.vocab_model.get_recent_words(10)
+            
+            for word_doc in self.recent_words:
+                created_date = word_doc.get('created_at', '')
+                if isinstance(created_date, datetime):
+                    created_date = created_date.strftime('%m/%d/%Y')
+                
+                self.recent_tree.insert('', 'end', values=(
+                    word_doc.get('word', '').title(),
+                    word_doc.get('vietnamese_meaning', ''),
+                    word_doc.get('part_of_speech', ''),
+                    created_date
+                ), tags=(str(word_doc['_id']),))
+                
+        except Exception as e:
+            print(f"Error loading recent words: {e}")
+
+    def get_selected_word_from_tree(self):
+        """Get selected word from the recent words tree"""
+        selection = self.recent_tree.selection()
+        if not selection:
+            return None
+        
+        item = self.recent_tree.item(selection[0])
+        word_id = item['tags'][0]
+        
+        # Find word in recent_words list
+        for word in self.recent_words:
+            if str(word['_id']) == word_id:
+                return word
+        return None
+
+    def on_tree_double_click(self, event):
+        """Handle double-click on tree item"""
+        self.edit_selected_word()
+
+    def edit_selected_word(self):
+        """Edit the selected word"""
+        word_data = self.get_selected_word_from_tree()
+        if not word_data:
+            messagebox.showwarning("Warning", "Please select a word to edit!")
+            return
+
+        edit_window = tk.Toplevel(self.master)
+        EditWordWindow(edit_window, word_data, self.vocab_model, self.load_recent_words)
+
+    def delete_selected_word(self):
+        """Delete the selected word"""
+        word_data = self.get_selected_word_from_tree()
+        if not word_data:
+            messagebox.showwarning("Warning", "Please select a word to delete!")
+            return
+
+        word = word_data.get('word', '')
+        result = messagebox.askyesno("Confirm Delete", 
+                                   f"Are you sure you want to delete the word '{word}'?")
+        if result:
+            try:
+                delete_result = self.vocab_model.delete_word(str(word_data['_id']))
+                if delete_result.deleted_count > 0:
+                    messagebox.showinfo("Success", f"Word '{word}' deleted successfully!")
+                    self.load_recent_words()
+                else:
+                    messagebox.showerror("Error", "Failed to delete word!")
+            except Exception as e:
+                messagebox.showerror("Error", f"An error occurred: {str(e)}")
+
+    def search_words(self, event=None):
+        """Search words and display in table"""
+        query = self.search_entry.get().strip()
+        if not query:
+            self.load_recent_words()
+            return
+            
+        if not self.vocab_model:
+            return
+
+        # Clear existing items
+        for item in self.recent_tree.get_children():
+            self.recent_tree.delete(item)
+            
+        try:
+            search_results = self.vocab_model.search_words(query)
+            self.recent_words = search_results  # Update recent_words for edit/delete
+            
+            for word_doc in search_results:
+                created_date = word_doc.get('created_at', '')
+                if isinstance(created_date, datetime):
+                    created_date = created_date.strftime('%m/%d/%Y')
+                
+                self.recent_tree.insert('', 'end', values=(
+                    word_doc.get('word', '').title(),
+                    word_doc.get('vietnamese_meaning', ''),
+                    word_doc.get('part_of_speech', ''),
+                    created_date
+                ), tags=(str(word_doc['_id']),))
+                
+        except Exception as e:
+            print(f"Error searching words: {e}")
+
+    def clear_search(self):
+        """Clear search and show recent words"""
+        self.search_entry.delete(0, tk.END)
+        self.load_recent_words()
+
+    # Rest of the methods remain the same...
     def add_word_enter(self, event):
         self.add_word()
 
@@ -153,12 +325,66 @@ class MainWindow:
             messagebox.showwarning("Warning", "Please enter both English word and Vietnamese meaning!")
             return
 
+        if not self.vocab_model:
+            messagebox.showerror("Error", "Database not connected!")
+            return
+
         self.status_label.config(text="Adding word...", foreground="blue")
         self.add_btn.config(state='disabled')
+        self.quick_add_btn.config(state='disabled')
 
-        # Run dictionary lookup in separate thread
-        threading.Thread(target=self._add_word_with_lookup, 
+        # Check if auto lookup is enabled
+        if self.auto_lookup_var.get():
+            # Run dictionary lookup in separate thread
+            threading.Thread(target=self._add_word_with_lookup, 
+                            args=(word, vn_meaning, pos), daemon=True).start()
+        else:
+            # Add without lookup
+            threading.Thread(target=self._add_word_without_lookup, 
+                            args=(word, vn_meaning, pos), daemon=True).start()
+
+    def quick_add_word(self):
+        """Add word quickly without API lookup"""
+        word = self.word_entry.get().strip()
+        vn_meaning = self.vn_meaning_entry.get().strip()
+        pos = self.pos_var.get()
+
+        if not word or not vn_meaning:
+            messagebox.showwarning("Warning", "Please enter both English word and Vietnamese meaning!")
+            return
+
+        if not self.vocab_model:
+            messagebox.showerror("Error", "Database not connected!")
+            return
+
+        self.status_label.config(text="Adding word...", foreground="blue")
+        self.add_btn.config(state='disabled')
+        self.quick_add_btn.config(state='disabled')
+
+        # Add without lookup
+        threading.Thread(target=self._add_word_without_lookup, 
                         args=(word, vn_meaning, pos), daemon=True).start()
+
+    def _add_word_without_lookup(self, word, vn_meaning, pos):
+        """Add word without API lookup - faster"""
+        try:
+            word_data = {
+                'word': word.lower(),
+                'vietnamese_meaning': vn_meaning,
+                'part_of_speech': pos,
+                'english_meaning': '',
+                'pronunciation': '',
+                'example': ''
+            }
+
+            # Add to database
+            result = self.vocab_model.add_word(word_data)
+            
+            # Update UI in main thread
+            self.master.after(0, self._add_word_success, word)
+            
+        except Exception as e:
+            self.master.after(0, self._add_word_error, str(e))
 
     def _add_word_with_lookup(self, word, vn_meaning, pos):
         try:
@@ -186,6 +412,7 @@ class MainWindow:
     def _add_word_success(self, word):
         self.status_label.config(text=f"Added '{word}' successfully!", foreground="green")
         self.add_btn.config(state='normal')
+        self.quick_add_btn.config(state='normal')
         
         # Clear inputs
         self.word_entry.delete(0, tk.END)
@@ -201,91 +428,65 @@ class MainWindow:
     def _add_word_error(self, error):
         self.status_label.config(text=f"Error: {error}", foreground="red")
         self.add_btn.config(state='normal')
-
-    def load_recent_words(self):
-        if not self.vocab_model:
-            return
-            
-        self.recent_listbox.delete(0, tk.END)
-        recent_words = self.vocab_model.get_recent_words(10)
-        
-        for word_doc in recent_words:
-            display_text = f"{word_doc['word']} - {word_doc['vietnamese_meaning']}"
-            self.recent_listbox.insert(tk.END, display_text)
-
-    def search_words(self, event=None):
-        query = self.search_entry.get().strip()
-        if not query:
-            self.load_recent_words()
-            return
-            
-        if not self.vocab_model:
-            return
-
-        self.recent_listbox.delete(0, tk.END)
-        search_results = self.vocab_model.search_words(query)
-        
-        for word_doc in search_results:
-            display_text = f"{word_doc['word']} - {word_doc['vietnamese_meaning']}"
-            self.recent_listbox.insert(tk.END, display_text)
-
-    def clear_search(self):
-        self.search_entry.delete(0, tk.END)
-        self.load_recent_words()
-
-    def edit_selected_word(self):
-        selection = self.recent_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("Warning", "Please select a word to edit!")
-            return
-        messagebox.showinfo("Edit", "Edit functionality to be implemented in vocabulary management window.")
-
-    def delete_selected_word(self):
-        selection = self.recent_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("Warning", "Please select a word to delete!")
-            return
-        messagebox.showinfo("Delete", "Delete functionality to be implemented.")
+        self.quick_add_btn.config(state='normal')
 
     def import_data(self):
-        messagebox.showinfo("Import", "Import data functionality to be implemented.")
+        messagebox.showinfo("Import", "Use the Vocabulary Management window to import data!")
 
     def export_data(self):
-        messagebox.showinfo("Export", "Export data functionality to be implemented.")
+        messagebox.showinfo("Export", "Use the Vocabulary Management window to export data!")
 
     def open_flashcard_window(self):
         if not self.vocab_model:
             messagebox.showerror("Error", "Database not connected!")
             return
             
-        words = self.vocab_model.get_all_words()
-        if not words:
-            messagebox.showinfo("Info", "No words available for flashcards!")
-            return
-            
-        flashcard_win = tk.Toplevel(self.master)
-        FlashcardWindow(flashcard_win, words, self.progress_model)
+        try:
+            words = self.vocab_model.get_all_words()
+            if not words:
+                messagebox.showinfo("Info", "No words available for flashcards!")
+                return
+                
+            flashcard_win = tk.Toplevel(self.master)
+            FlashcardWindow(flashcard_win, words, self.progress_model)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open flashcards: {str(e)}")
 
     def open_quiz_window(self):
         if not self.vocab_model:
             messagebox.showerror("Error", "Database not connected!")
             return
             
-        words = self.vocab_model.get_all_words()
-        if not words:
-            messagebox.showinfo("Info", "No words available for quiz!")
-            return
-            
-        quiz_win = tk.Toplevel(self.master)
-        QuizWindow(quiz_win, words, self.progress_model)
+        try:
+            words = self.vocab_model.get_all_words()
+            if not words:
+                messagebox.showinfo("Info", "No words available for quiz!")
+                return
+                
+            quiz_win = tk.Toplevel(self.master)
+            QuizWindow(quiz_win, words, self.progress_model)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open quiz: {str(e)}")
 
     def open_progress_window(self):
-        if not self.progress_model:
+        if self.progress_model is None:
             messagebox.showerror("Error", "Database not connected!")
             return
             
-        progress_win = tk.Toplevel(self.master)
-        ProgressWindow(progress_win, self.progress_model, self.vocab_model)
+        try:
+            progress_win = tk.Toplevel(self.master)
+            ProgressWindow(progress_win, self.progress_model, self.vocab_model)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open progress window: {str(e)}")
 
     def manage_vocabulary(self):
-        messagebox.showinfo("Manage", "Vocabulary management window to be implemented.")
+        """Open vocabulary management window"""
+        if not self.vocab_model:
+            messagebox.showerror("Error", "Database not connected!")
+            return
+            
+        try:
+            manage_win = tk.Toplevel(self.master)
+            VocabularyManagementWindow(manage_win, self.vocab_model)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open vocabulary management: {str(e)}")
