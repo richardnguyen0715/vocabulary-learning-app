@@ -1,4 +1,13 @@
-@echo off 
+@echo off
+REM Check for administrator privileges
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo This script requires Administrator privileges.
+    echo Please run as Administrator or right-click and select "Run as administrator"
+    pause
+    exit /b 1
+)
+
 echo ====================================== 
 echo   VOCABULARY LEARNING APP 
 echo ====================================== 
@@ -20,4 +29,4 @@ if %errorlevel% equ 0 (
 ) 
 echo. 
 echo Starting Vocabulary Learning App... 
-VocabularyLearningApp.exe 
+VocabularyLearningApp.exe
